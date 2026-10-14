@@ -4,7 +4,7 @@ import pytest
 
 from textual.app import App, ComposeResult
 from textual.widgets import Tree
-from textual.widgets.tree import RemoveRootError
+from textual.widgets.tree import RemoveRootError, UnknownNodeID
 
 
 class VerseBody:
@@ -108,3 +108,41 @@ async def test_attempt_to_remove_root():
     async with TreeClearApp().run_test() as pilot:
         with pytest.raises(RemoveRootError):
             pilot.app.query_one(VerseTree).root.remove()
+
+
+async def test_clear_resets_node_index() -> None:
+    """Clearing a tree should drop discarded nodes from the node index and
+    register the new root, so get_node_by_id can't return stale nodes
+    (https://github.com/Textualize/textual/issues/6712)."""
+    async with TreeClearApp().run_test() as pilot:
+        tree = pilot.app.query_one(VerseTree)
+        old_child_id = tree.root.children[0].id
+        old_child = tree.get_node_by_id(old_child_id)
+
+        tree.clear()
+
+        # The new root is indexed, and its ID (reused from the old root) now
+        # maps to it rather than to the discarded root.
+        assert tree._tree_nodes[tree.root.id] is tree.root
+        assert tree.get_node_by_id(tree.root.id) is tree.root
+        # Pre-clear nodes are gone from the index.
+        assert old_child_id not in tree._tree_nodes
+        assert old_child_id != tree.root.id or old_child is not tree.root
+        with pytest.raises(UnknownNodeID):
+            tree.get_node_by_id(old_child_id)
+        # Only the fresh root remains indexed.
+        assert len(tree._tree_nodes) == 1
+
+
+async def test_reset_resets_node_index() -> None:
+    """reset() goes through clear(), so it must rebuild the node index too."""
+    async with TreeClearApp().run_test() as pilot:
+        tree = pilot.app.query_one(VerseTree)
+        old_child_id = tree.root.children[0].id
+
+        tree.reset(label="Jiangyin")
+
+        assert tree.get_node_by_id(tree.root.id) is tree.root
+        with pytest.raises(UnknownNodeID):
+            tree.get_node_by_id(old_child_id)
+        assert len(tree._tree_nodes) == 1
