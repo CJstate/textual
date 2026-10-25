@@ -592,7 +592,12 @@ class Strip:
 
         strips: list[Strip]
         if cuts == [cell_length]:
-            strips = [self]
+            # Don't cache (or return) a list holding `self`: that would embed
+            # a self-referential cycle (strip -> cache -> list -> strip) in
+            # every full-width line the compositor divides, which only the
+            # cyclic GC can collect — one cycle per line per frame under a
+            # translucent modal (#6738).
+            return [self]
         else:
             strips = []
             add_strip = strips.append
