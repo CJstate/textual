@@ -1918,6 +1918,12 @@ TextArea {
             pause=not (self.cursor_blink and self.has_focus),
         )
 
+    def _on_unmount(self) -> None:
+        # Drop the signal subscription so the callback (whose closure holds
+        # `self`) doesn't outlive this widget and pin it — and anything it
+        # references — in memory after removal (#6744).
+        self.screen.text_selection_started_signal.unsubscribe(self)
+
     def _toggle_cursor_blink_visible(self) -> None:
         """Toggle visibility of the cursor for the purposes of 'cursor blink'."""
         if not self.screen.is_active:

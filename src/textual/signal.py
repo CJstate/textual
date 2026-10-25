@@ -7,8 +7,8 @@ DOMNodes can subscribe to a signal, which will invoke a callback when the signal
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generic, TypeVar, Union
 from weakref import WeakKeyDictionary, ref
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generic, TypeVar, Union
 
 import rich.repr
 
@@ -79,6 +79,12 @@ class Signal(Generic[SignalT]):
                 f"Node must be running to subscribe to a signal (has {node} been mounted)?"
             )
 
+        # Hold only a weak reference to the node inside the callbacks so the
+        # subscription never pins a removed widget (and its subtree) in
+        # memory: the WeakKeyDictionary entry disappears as soon as the node
+        # is garbage collected (#6744).
+        node_ref = ref(node)
+
         if immediate:
 
             def signal_callback(data: SignalT) -> None:
@@ -89,7 +95,9 @@ class Signal(Generic[SignalT]):
 
             def signal_callback(data: SignalT) -> None:
                 """Post the callback to the node, to call at the next opertunity."""
-                node.call_next(callback, data)
+                node = node_ref()
+                if node is not None:
+                    node.call_next(callback, data)
 
         callbacks = self._subscriptions.setdefault(node, [])
         callbacks.append(signal_callback)

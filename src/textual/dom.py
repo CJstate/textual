@@ -246,6 +246,24 @@ class DOMNode(MessagePump):
         """
         return self
 
+    def _invalidate_query_one_cache_for(self, removed: DOMNode) -> None:
+        """Drop `query_one` cache entries that resolve to `removed`.
+
+        Cache entries live on the ancestor DOM nodes (the app and screens),
+        and without this the cached results keep a removed widget — and its
+        subtree — alive until the LRU cache naturally evicts them
+        (issue #6744).
+
+        Args:
+            removed: The node being removed from the DOM.
+        """
+        cache = self._query_one_cache
+        if not cache:
+            return
+        for key in list(cache.keys()):
+            if cache.get(key) is removed:
+                cache.discard(key)
+
     def set_reactive(
         self, reactive: Reactive[ReactiveType], value: ReactiveType
     ) -> None:

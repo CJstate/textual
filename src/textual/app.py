@@ -4393,6 +4393,27 @@ class App(Generic[ReturnType], DOMNode):
 
         for node in pruning_nodes:
             node._pruning = True
+            # Invalidate query_one cache entries that resolve to the removed
+            # nodes: the caches live on the ancestor DOM nodes (typically
+            # the app and the screens), and without this the cached results
+            # keep the removed widget — and its subtree — alive until the
+            # cache naturally evicts them (issue #6744).
+            self._invalidate_query_one_cache_for(node)
+            for screen in self.screen_stack:
+                screen._invalidate_query_one_cache_for(node)
+                # Layout caches hold DockArrangeResult snapshots that
+                # reference the removed widget via WidgetPlacement; drop
+                # them so a removed widget isn't pinned until the FIFOCache
+                # turns over (issue #6744).
+                screen._arrangement_cache.clear()
+            # The displayed-nodes caches on every ancestor's NodeList hold
+            # snapshots that include the removed widget; reset them so the
+            # removed widget isn't pinned (issue #6744).
+            ancestor = node.parent
+            while ancestor is not None:
+                ancestor._nodes._displayed_nodes = (-1, [])
+                ancestor._nodes._displayed_visible_nodes = (-1, [])
+                ancestor = ancestor.parent
 
         def post_mount() -> None:
             """Called after removing children."""

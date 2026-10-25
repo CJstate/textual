@@ -42,7 +42,7 @@ from textual.constants import SLOW_THRESHOLD
 from textual.css.match import match
 from textual.events import Event
 from textual.message import Message
-from textual.reactive import Reactive, TooManyComputesError
+from textual.reactive import Reactive, TooManyComputesError, _detach_watchers
 from textual.signal import Signal
 from textual.timer import Timer, TimerCallback
 
@@ -578,6 +578,11 @@ class MessagePump(metaclass=_MessagePumpMeta):
                         await Timer._stop_all(self._timers)
                         self._timers.clear()
                     Reactive._clear_watchers(self)
+                    # Detach the watchers this node registered on *other*
+                    # objects (e.g. a widget watching `app.theme`), so the
+                    # entries stored on those objects don't keep a removed
+                    # node alive (issue #6744).
+                    _detach_watchers(self)
                 finally:
                     await self._message_loop_exit()
         self._task = None

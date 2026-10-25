@@ -530,3 +530,48 @@ def _watch(
         current_value = getattr(obj, attribute_name, None)
         invoke_watcher(obj, callback, current_value, current_value)
     watcher_list.append((node, callback))
+    # Track the registration on the watching node too, so it can detach all
+    # of its watchers when it is removed: otherwise the (node, callback)
+    # tuples stored on the watched object keep the removed node alive
+    # (issue #6744).
+    if not hasattr(node, "__watching"):
+        try:
+            setattr(node, "__watching", [])
+        except Exception:
+            # Some Reactables may not allow new attributes; leak-free cleanup
+            # is best effort for those.
+            return
+    getattr(node, "__watching").append((obj, attribute_name, callback))
+
+
+def _detach_watchers(node: Reactable) -> None:
+    """Remove every watcher `node` registered on other objects.
+
+    Called when `node` is removed / closed so that the watcher entries
+    stored on the watched objects no longer pin `node` (and anything it
+    references) in memory (issue #6744).
+
+    Args:
+        node: The node that created the watchers.
+    """
+    watching = getattr(node, "__watching", None)
+    if not watching:
+        return
+    for obj, attribute_name, callback in watching:
+        try:
+            watchers = getattr(obj, "__watchers", None)
+        except AttributeError:
+            continue
+        if watchers is None:
+            continue
+        watcher_list = watchers.get(attribute_name)
+        if watcher_list is None:
+            continue
+        watchers[attribute_name] = [
+            entry
+            for entry in watcher_list
+            if entry[0] is not node and entry[1] is not callback
+        ]
+        if not watchers[attribute_name]:
+            del watchers[attribute_name]
+    watching.clear()
